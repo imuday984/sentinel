@@ -1,0 +1,32 @@
+# Node.js
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Environment variables
+.env
+.env.*
+
+# Redis data (local persistence)
+redis_data/
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.venv/
+venv/
+
+# OS / Editor junk
+.DS_Store
+Thumbs.db
+.vscode/
+
+# Docker
+*.log
+
+# Model artifacts (optional)
+# Uncomment if model is large
+# *.onnx
