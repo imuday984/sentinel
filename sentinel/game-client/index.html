@@ -2,112 +2,314 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <title>Sentinel Aim Trainer</title>
+    <title>Sentinel: Anti-Cheat Demo</title>
     <style>
-        body { background: #222; color: #fff; font-family: sans-serif; display: flex; flex-direction: column; align-items: center; }
-        #game-area { width: 600px; height: 400px; background: #333; position: relative; border: 2px solid #555; margin-top: 20px; cursor: crosshair; }
-        .target { width: 30px; height: 30px; background: red; border-radius: 50%; position: absolute; }
-        #stats { margin-top: 10px; }
-        button { padding: 10px 20px; font-size: 16px; cursor: pointer; margin: 5px; }
+        body {
+            margin: 0;
+            background-color: #121212;
+            color: #0f0;
+            font-family: 'Courier New', Courier, monospace;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            height: 100vh;
+            overflow: hidden;
+        }
+
+        #ui-layer {
+            position: absolute;
+            top: 20px;
+            width: 800px;
+            display: flex;
+            justify-content: space-between;
+            z-index: 10;
+            pointer-events: none; /* Let clicks pass through to canvas */
+        }
+
+        .stat-box {
+            background: rgba(0, 20, 0, 0.8);
+            border: 1px solid #0f0;
+            padding: 10px 20px;
+            border-radius: 4px;
+            pointer-events: auto;
+        }
+
+        canvas {
+            background: radial-gradient(circle, #1a1a1a 0%, #000000 100%);
+            border: 2px solid #333;
+            cursor: crosshair;
+            box-shadow: 0 0 20px rgba(0, 255, 0, 0.1);
+        }
+
+        button {
+            background: #222;
+            color: #fff;
+            border: 1px solid #555;
+            padding: 8px 16px;
+            cursor: pointer;
+            font-family: inherit;
+            transition: 0.2s;
+        }
+
+        button:hover { background: #333; }
+        
+        button.cheat-active {
+            background: #ff0000;
+            color: white;
+            border-color: #ff5555;
+            box-shadow: 0 0 10px #ff0000;
+            animation: pulse 1s infinite;
+        }
+
+        @keyframes pulse {
+            0% { transform: scale(1); }
+            50% { transform: scale(1.05); }
+            100% { transform: scale(1); }
+        }
+
+        #logs {
+            position: absolute;
+            bottom: 10px;
+            left: 10px;
+            font-size: 12px;
+            color: #555;
+            max-height: 100px;
+            overflow: hidden;
+        }
     </style>
 </head>
 <body>
 
-    <h1>Sentinel Anti-Cheat Demo</h1>
-    <div id="controls">
-        <button onclick="startGame()">Start Human Mode</button>
-        <button onclick="activateCheats()" style="background:red; color:white;">Activate Aimbot</button>
+    <div id="ui-layer">
+        <div class="stat-box">
+            <h3>SENTINEL PROTOCOL</h3>
+            <div>USER_ID: <span id="uid-display">...</span></div>
+            <div>STATUS: <span id="connection-status" style="color:orange">CONNECTING...</span></div>
+        </div>
+        
+        <div class="stat-box" style="text-align: right;">
+            <div id="score">SCORE: 0</div>
+            <button id="btn-cheat" onclick="toggleCheats()">[Z] ACTIVATE AIMBOT</button>
+        </div>
     </div>
-    <div id="stats">Score: 0 | Last Reaction: 0ms</div>
-    <div id="game-area"></div>
+
+    <canvas id="gameCanvas" width="800" height="600"></canvas>
+    <div id="logs">Telemetry Logs initialized...</div>
 
     <script>
+        // --- CONFIGURATION ---
         const API_URL = "http://localhost:3000/telemetry";
-        const USER_ID = "player_" + Math.floor(Math.random() * 1000);
-        let score = 0;
-        let lastTime = 0;
-        let isCheating = false;
+        const USER_ID = "player_" + Math.floor(Math.random() * 9000 + 1000);
+        document.getElementById('uid-display').innerText = USER_ID;
 
-        function startGame() {
-            score = 0;
-            isCheating = false;
-            nextTarget();
+        // --- GAME STATE ---
+        const canvas = document.getElementById('gameCanvas');
+        const ctx = canvas.getContext('2d');
+        const width = canvas.width;
+        const height = canvas.height;
+
+        let score = 0;
+        let targets = [];
+        let isCheating = false;
+        let lastClickTime = 0;
+        let mouseX = 0;
+        let mouseY = 0;
+
+        // --- AUDIO (Simple Beep) ---
+        const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+        function playSound(freq = 440, type = 'sine') {
+            const osc = audioCtx.createOscillator();
+            const gain = audioCtx.createGain();
+            osc.frequency.value = freq;
+            osc.type = type;
+            osc.connect(gain);
+            gain.connect(audioCtx.destination);
+            osc.start();
+            gain.gain.exponentialRampToValueAtTime(0.00001, audioCtx.currentTime + 0.1);
+            osc.stop(audioCtx.currentTime + 0.1);
         }
 
-        function nextTarget() {
-            const area = document.getElementById('game-area');
-            area.innerHTML = ''; // Clear old target
-            
-            const target = document.createElement('div');
-            target.className = 'target';
-            
-            // Random Position
-            const x = Math.random() * (600 - 30);
-            const y = Math.random() * (400 - 30);
-            target.style.left = x + 'px';
-            target.style.top = y + 'px';
-            
-            lastTime = Date.now();
-            
-            // If cheating, auto-click instantly
-            if(isCheating) {
-                setTimeout(() => {
-                    // Perfect center hit (Variance 0)
-                    registerClick(x + 15, y + 15, x, y); 
-                }, 50); // Inhuman reaction time
+        // --- CLASSES ---
+        class Target {
+            constructor() {
+                this.radius = 25;
+                this.x = Math.random() * (width - 60) + 30;
+                this.y = Math.random() * (height - 60) + 30;
+                this.spawnTime = Date.now();
+                this.color = '#00ff00';
             }
 
-            target.onmousedown = (e) => {
-                if(!isCheating) {
-                    // Get click coordinates relative to game area
-                    const rect = area.getBoundingClientRect();
-                    const clickX = e.clientX - rect.left;
-                    const clickY = e.clientY - rect.top;
-                    registerClick(clickX, clickY, x, y);
-                }
-            };
-
-            area.appendChild(target);
+            draw() {
+                ctx.beginPath();
+                ctx.arc(this.x, this.y, this.radius, 0, Math.PI * 2);
+                ctx.fillStyle = this.color;
+                ctx.fill();
+                ctx.strokeStyle = '#fff';
+                ctx.stroke();
+                
+                // Inner circle
+                ctx.beginPath();
+                ctx.arc(this.x, this.y, this.radius / 2, 0, Math.PI * 2);
+                ctx.fillStyle = 'rgba(0,0,0,0.2)';
+                ctx.fill();
+            }
         }
 
-        function registerClick(clickX, clickY, targetX, targetY) {
-            const now = Date.now();
-            const reactionTime = now - lastTime;
-            
-            // Calculate distance from center of target (30px size -> center is +15)
-            const centerX = targetX + 15;
-            const centerY = targetY + 15;
-            const distance = Math.sqrt(Math.pow(clickX - centerX, 2) + Math.pow(clickY - centerY, 2));
+        // --- GAME ENGINE ---
+        function init() {
+            spawnTarget();
+            loop();
+            checkConnection();
+        }
 
-            score++;
-            document.getElementById('stats').innerText = `Score: ${score} | Last Reaction: ${reactionTime}ms`;
+        function spawnTarget() {
+            targets.push(new Target());
+        }
 
-            // Send Data to API
+        function loop() {
+            // Clear Canvas
+            ctx.fillStyle = 'rgba(0, 0, 0, 0.3)'; // Trail effect
+            ctx.fillRect(0, 0, width, height);
+
+            // Draw Grid
+            ctx.strokeStyle = '#1a1a1a';
+            ctx.lineWidth = 1;
+            for(let i=0; i<width; i+=50) { ctx.beginPath(); ctx.moveTo(i,0); ctx.lineTo(i,height); ctx.stroke(); }
+            for(let i=0; i<height; i+=50) { ctx.beginPath(); ctx.moveTo(0,i); ctx.lineTo(width,i); ctx.stroke(); }
+
+            // Draw Targets
+            targets.forEach(t => t.draw());
+
+            // CHEAT LOGIC: Auto-aim
+            if(isCheating && targets.length > 0) {
+                const t = targets[0];
+                // Simulate inhuman reaction: Wait 30ms then snap
+                if(Date.now() - t.spawnTime > 30) { 
+                    // Move "mouse" instantly to target center
+                    mouseX = t.x;
+                    mouseY = t.y;
+                    handleClick({ clientX: t.x + canvas.getBoundingClientRect().left, clientY: t.y + canvas.getBoundingClientRect().top }, true);
+                }
+            }
+
+            requestAnimationFrame(loop);
+        }
+
+        // --- INTERACTION ---
+        function handleClick(e, isBot = false) {
+            const rect = canvas.getBoundingClientRect();
+            // If bot, we trust the passed coordinates. If human, calculate from event.
+            const clickX = isBot ? mouseX : e.clientX - rect.left;
+            const clickY = isBot ? mouseY : e.clientY - rect.top;
+
+            // Check collision backwards (topmost target first)
+            for (let i = targets.length - 1; i >= 0; i--) {
+                const t = targets[i];
+                const dist = Math.hypot(clickX - t.x, clickY - t.y);
+
+                if (dist < t.radius) {
+                    // HIT!
+                    const now = Date.now();
+                    const reactionTime = now - t.spawnTime;
+                    
+                    // Visual feedback
+                    playSound(600, 'square');
+                    score++;
+                    document.getElementById('score').innerText = `SCORE: ${score}`;
+                    
+                    // Send Data
+                    sendTelemetry(t, clickX, clickY, dist, reactionTime, isBot);
+                    
+                    // Remove target and spawn new one
+                    targets.splice(i, 1);
+                    spawnTarget();
+                    return;
+                }
+            }
+            // MISS
+            if(!isBot) playSound(150, 'sawtooth');
+        }
+
+        async function sendTelemetry(target, clickX, clickY, dist, reactionTime, isBot) {
             const payload = {
                 user_id: USER_ID,
-                match_id: "match_1",
+                match_id: "lobby_alpha",
                 click_data: {
-                    timestamp: now,
+                    timestamp: Date.now(),
                     reaction_time_ms: reactionTime,
-                    mouse_x: clickX,
-                    mouse_y: clickY,
-                    distance_from_center: distance
+                    mouse_x: Math.round(clickX),
+                    mouse_y: Math.round(clickY),
+                    distance_from_center: parseFloat(dist.toFixed(2)),
+                    is_bot_flag: isBot // For debugging, but model won't use this!
                 }
             };
-            
-            fetch(API_URL, {
-                method: "POST",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify(payload)
-            }).catch(console.error);
 
-            setTimeout(nextTarget, 500); // Wait a bit before next target
+            log(`Sent: ${reactionTime}ms | Offset: ${dist.toFixed(1)}px`);
+
+            try {
+                await fetch(API_URL, {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify(payload)
+                });
+            } catch (err) {
+                console.error("API Error", err);
+            }
         }
 
-        function activateCheats() {
-            isCheating = true;
-            startGame();
+        // --- CONTROLS ---
+        canvas.addEventListener('mousedown', (e) => handleClick(e, false));
+        
+        // Track mouse for visuals
+        canvas.addEventListener('mousemove', (e) => {
+            if(!isCheating) {
+                const rect = canvas.getBoundingClientRect();
+                mouseX = e.clientX - rect.left;
+                mouseY = e.clientY - rect.top;
+            }
+        });
+
+        // Keyboard Shortcut 'Z' for toggle
+        document.addEventListener('keydown', (e) => {
+            if(e.key.toLowerCase() === 'z') toggleCheats();
+        });
+
+        function toggleCheats() {
+            isCheating = !isCheating;
+            const btn = document.getElementById('btn-cheat');
+            if(isCheating) {
+                btn.classList.add('cheat-active');
+                btn.innerText = "AIMBOT: ON";
+                log("WARNING: CHEAT SOFTWARE DETECTED");
+            } else {
+                btn.classList.remove('cheat-active');
+                btn.innerText = "[Z] ACTIVATE AIMBOT";
+                log("System: User normalized");
+            }
         }
+
+        // --- UTILS ---
+        function log(msg) {
+            const el = document.getElementById('logs');
+            el.innerHTML = `> ${msg}<br>` + el.innerHTML;
+        }
+
+        async function checkConnection() {
+            try {
+                // Just checking if backend accepts a ping (using a known bad endpoint usually 404s, but connection succeeds)
+                // For now just assume if fetch doesn't throw network error, we are good.
+                document.getElementById('connection-status').innerText = "ONLINE";
+                document.getElementById('connection-status').style.color = "#0f0";
+            } catch(e) {
+                document.getElementById('connection-status').innerText = "OFFLINE";
+                document.getElementById('connection-status').style.color = "red";
+            }
+        }
+
+        // START
+        init();
+
     </script>
 </body>
 </html>
