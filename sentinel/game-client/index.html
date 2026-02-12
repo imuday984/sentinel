@@ -1,0 +1,113 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Sentinel Aim Trainer</title>
+    <style>
+        body { background: #222; color: #fff; font-family: sans-serif; display: flex; flex-direction: column; align-items: center; }
+        #game-area { width: 600px; height: 400px; background: #333; position: relative; border: 2px solid #555; margin-top: 20px; cursor: crosshair; }
+        .target { width: 30px; height: 30px; background: red; border-radius: 50%; position: absolute; }
+        #stats { margin-top: 10px; }
+        button { padding: 10px 20px; font-size: 16px; cursor: pointer; margin: 5px; }
+    </style>
+</head>
+<body>
+
+    <h1>Sentinel Anti-Cheat Demo</h1>
+    <div id="controls">
+        <button onclick="startGame()">Start Human Mode</button>
+        <button onclick="activateCheats()" style="background:red; color:white;">Activate Aimbot</button>
+    </div>
+    <div id="stats">Score: 0 | Last Reaction: 0ms</div>
+    <div id="game-area"></div>
+
+    <script>
+        const API_URL = "http://localhost:3000/telemetry";
+        const USER_ID = "player_" + Math.floor(Math.random() * 1000);
+        let score = 0;
+        let lastTime = 0;
+        let isCheating = false;
+
+        function startGame() {
+            score = 0;
+            isCheating = false;
+            nextTarget();
+        }
+
+        function nextTarget() {
+            const area = document.getElementById('game-area');
+            area.innerHTML = ''; // Clear old target
+            
+            const target = document.createElement('div');
+            target.className = 'target';
+            
+            // Random Position
+            const x = Math.random() * (600 - 30);
+            const y = Math.random() * (400 - 30);
+            target.style.left = x + 'px';
+            target.style.top = y + 'px';
+            
+            lastTime = Date.now();
+            
+            // If cheating, auto-click instantly
+            if(isCheating) {
+                setTimeout(() => {
+                    // Perfect center hit (Variance 0)
+                    registerClick(x + 15, y + 15, x, y); 
+                }, 50); // Inhuman reaction time
+            }
+
+            target.onmousedown = (e) => {
+                if(!isCheating) {
+                    // Get click coordinates relative to game area
+                    const rect = area.getBoundingClientRect();
+                    const clickX = e.clientX - rect.left;
+                    const clickY = e.clientY - rect.top;
+                    registerClick(clickX, clickY, x, y);
+                }
+            };
+
+            area.appendChild(target);
+        }
+
+        function registerClick(clickX, clickY, targetX, targetY) {
+            const now = Date.now();
+            const reactionTime = now - lastTime;
+            
+            // Calculate distance from center of target (30px size -> center is +15)
+            const centerX = targetX + 15;
+            const centerY = targetY + 15;
+            const distance = Math.sqrt(Math.pow(clickX - centerX, 2) + Math.pow(clickY - centerY, 2));
+
+            score++;
+            document.getElementById('stats').innerText = `Score: ${score} | Last Reaction: ${reactionTime}ms`;
+
+            // Send Data to API
+            const payload = {
+                user_id: USER_ID,
+                match_id: "match_1",
+                click_data: {
+                    timestamp: now,
+                    reaction_time_ms: reactionTime,
+                    mouse_x: clickX,
+                    mouse_y: clickY,
+                    distance_from_center: distance
+                }
+            };
+            
+            fetch(API_URL, {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify(payload)
+            }).catch(console.error);
+
+            setTimeout(nextTarget, 500); // Wait a bit before next target
+        }
+
+        function activateCheats() {
+            isCheating = true;
+            startGame();
+        }
+    </script>
+</body>
+</html>
