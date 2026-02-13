@@ -2,250 +2,366 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <title>Sentinel: Anti-Cheat Demo</title>
+    <title>Sentinel: Wide Area</title>
     <style>
         body {
             margin: 0;
-            background-color: #121212;
+            overflow: hidden; 
+            background-color: #050505;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
             color: #0f0;
-            font-family: 'Courier New', Courier, monospace;
-            display: flex;
-            flex-direction: column;
-            align-items: center;
-            justify-content: center;
-            height: 100vh;
-            overflow: hidden;
+            cursor: none; 
         }
 
         #ui-layer {
             position: absolute;
-            top: 20px;
-            width: 800px;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            pointer-events: none; /* Let clicks pass through */
+            padding: 20px;
+            box-sizing: border-box;
             display: flex;
             justify-content: space-between;
-            z-index: 10;
-            pointer-events: none; /* Let clicks pass through to canvas */
         }
 
-        .stat-box {
-            background: rgba(0, 20, 0, 0.8);
-            border: 1px solid #0f0;
-            padding: 10px 20px;
-            border-radius: 4px;
-            pointer-events: auto;
+        .hud-panel {
+            background: rgba(0, 0, 0, 0.6);
+            backdrop-filter: blur(5px);
+            padding: 15px;
+            border-left: 4px solid #0f0;
+            border-radius: 0 10px 10px 0;
+            text-shadow: 0 0 5px #0f0;
         }
 
-        canvas {
-            background: radial-gradient(circle, #1a1a1a 0%, #000000 100%);
-            border: 2px solid #333;
-            cursor: crosshair;
-            box-shadow: 0 0 20px rgba(0, 255, 0, 0.1);
+        .right-panel {
+            border-left: none;
+            border-right: 4px solid #0f0;
+            border-radius: 10px 0 0 10px;
+            text-align: right;
         }
 
-        button {
+        h1 { margin: 0; font-size: 1.2rem; letter-spacing: 2px; text-transform: uppercase; opacity: 0.8; }
+        .stat { font-size: 1.5rem; font-weight: bold; margin-top: 5px; }
+        .sub-stat { font-size: 0.9rem; color: #88ff88; margin-top: 2px; }
+
+        #cheat-indicator {
+            display: inline-block;
+            padding: 5px 10px;
             background: #222;
-            color: #fff;
-            border: 1px solid #555;
-            padding: 8px 16px;
-            cursor: pointer;
-            font-family: inherit;
-            transition: 0.2s;
+            border: 1px solid #444;
+            color: #666;
+            border-radius: 4px;
+            font-size: 0.8rem;
+            transition: all 0.2s;
         }
 
-        button:hover { background: #333; }
-        
-        button.cheat-active {
+        #cheat-indicator.active {
             background: #ff0000;
-            color: white;
+            color: #fff;
             border-color: #ff5555;
-            box-shadow: 0 0 10px #ff0000;
-            animation: pulse 1s infinite;
+            box-shadow: 0 0 15px #ff0000;
+            animation: pulse 0.8s infinite alternate;
         }
 
-        @keyframes pulse {
-            0% { transform: scale(1); }
-            50% { transform: scale(1.05); }
-            100% { transform: scale(1); }
-        }
+        @keyframes pulse { from { opacity: 0.8; } to { opacity: 1; transform: scale(1.05); } }
 
-        #logs {
+        
+        #crosshair {
             position: absolute;
-            bottom: 10px;
-            left: 10px;
-            font-size: 12px;
-            color: #555;
-            max-height: 100px;
-            overflow: hidden;
+            width: 20px;
+            height: 20px;
+            border: 2px solid rgba(255, 255, 255, 0.8);
+            border-radius: 50%;
+            transform: translate(-50%, -50%);
+            pointer-events: none;
+            z-index: 100;
+            transition: transform 0.05s ease-out;
         }
+        #crosshair::after {
+            content: '';
+            position: absolute;
+            top: 50%; left: 50%;
+            width: 4px; height: 4px;
+            background: #0f0;
+            transform: translate(-50%, -50%);
+            border-radius: 50%;
+        }
+
     </style>
 </head>
 <body>
 
+    
+    <div id="crosshair"></div>
+
+    
     <div id="ui-layer">
-        <div class="stat-box">
-            <h3>SENTINEL PROTOCOL</h3>
-            <div>USER_ID: <span id="uid-display">...</span></div>
-            <div>STATUS: <span id="connection-status" style="color:orange">CONNECTING...</span></div>
+        <div class="hud-panel">
+            <h1>Sentinel Protocol</h1>
+            <div class="stat" id="user-id">ID: ...</div>
+            <div class="sub-stat" id="status-msg">System: Initializing...</div>
         </div>
-        
-        <div class="stat-box" style="text-align: right;">
-            <div id="score">SCORE: 0</div>
-            <button id="btn-cheat" onclick="toggleCheats()">[Z] ACTIVATE AIMBOT</button>
+
+        <div class="hud-panel right-panel">
+            <div class="stat" id="score">SCORE: 0</div>
+            <div class="sub-stat" id="latency">LAST: 0ms</div>
+            <div style="margin-top: 10px;">
+                <span id="cheat-indicator">[Z] AIMBOT: OFF</span>
+            </div>
         </div>
     </div>
 
-    <canvas id="gameCanvas" width="800" height="600"></canvas>
-    <div id="logs">Telemetry Logs initialized...</div>
+    
+    <canvas id="gameCanvas"></canvas>
 
     <script>
         // --- CONFIGURATION ---
         const API_URL = "http://localhost:3000/telemetry";
-        const USER_ID = "player_" + Math.floor(Math.random() * 9000 + 1000);
-        document.getElementById('uid-display').innerText = USER_ID;
+        const USER_ID = "OP_" + Math.floor(Math.random() * 9000 + 1000);
+        document.getElementById('user-id').innerText = USER_ID;
 
-        // --- GAME STATE ---
+        // --- SETUP CANVAS ---
         const canvas = document.getElementById('gameCanvas');
         const ctx = canvas.getContext('2d');
-        const width = canvas.width;
-        const height = canvas.height;
+        let width, height;
 
-        let score = 0;
-        let targets = [];
-        let isCheating = false;
-        let lastClickTime = 0;
-        let mouseX = 0;
-        let mouseY = 0;
-
-        // --- AUDIO (Simple Beep) ---
-        const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
-        function playSound(freq = 440, type = 'sine') {
-            const osc = audioCtx.createOscillator();
-            const gain = audioCtx.createGain();
-            osc.frequency.value = freq;
-            osc.type = type;
-            osc.connect(gain);
-            gain.connect(audioCtx.destination);
-            osc.start();
-            gain.gain.exponentialRampToValueAtTime(0.00001, audioCtx.currentTime + 0.1);
-            osc.stop(audioCtx.currentTime + 0.1);
+        function resize() {
+            width = window.innerWidth;
+            height = window.innerHeight;
+            canvas.width = width;
+            canvas.height = height;
         }
+        window.addEventListener('resize', resize);
+        resize();
+
+        
+        let targets = [];
+        let particles = [];
+        let score = 0;
+        let isCheating = false;
+        
+        
+        let mouseX = width / 2;
+        let mouseY = height / 2;
+        const crosshair = document.getElementById('crosshair');
+
+        
+        const AudioContext = window.AudioContext || window.webkitAudioContext;
+        const audioCtx = new AudioContext();
 
         // --- CLASSES ---
         class Target {
             constructor() {
-                this.radius = 25;
-                this.x = Math.random() * (width - 60) + 30;
-                this.y = Math.random() * (height - 60) + 30;
+                this.radius = 30;
+                // Keep away from edges
+                this.x = Math.random() * (width - 100) + 50;
+                this.y = Math.random() * (height - 100) + 50;
                 this.spawnTime = Date.now();
                 this.color = '#00ff00';
+                this.growing = true;
+                this.scale = 0;
+            }
+
+            update() {
+                // Pop-in animation
+                if (this.scale < 1) this.scale += 0.1;
             }
 
             draw() {
+                ctx.save();
+                ctx.translate(this.x, this.y);
+                ctx.scale(this.scale, this.scale);
+                
+                // Outer glow
+                ctx.shadowBlur = 15;
+                ctx.shadowColor = this.color;
+                
+                // Circle
                 ctx.beginPath();
-                ctx.arc(this.x, this.y, this.radius, 0, Math.PI * 2);
+                ctx.arc(0, 0, this.radius, 0, Math.PI * 2);
+                ctx.fillStyle = 'rgba(0, 20, 0, 0.8)';
+                ctx.strokeStyle = this.color;
+                ctx.lineWidth = 2;
+                ctx.fill();
+                ctx.stroke();
+
+                // Inner Bullseye
+                ctx.beginPath();
+                ctx.arc(0, 0, this.radius * 0.4, 0, Math.PI * 2);
                 ctx.fillStyle = this.color;
                 ctx.fill();
-                ctx.strokeStyle = '#fff';
-                ctx.stroke();
-                
-                // Inner circle
-                ctx.beginPath();
-                ctx.arc(this.x, this.y, this.radius / 2, 0, Math.PI * 2);
-                ctx.fillStyle = 'rgba(0,0,0,0.2)';
-                ctx.fill();
+
+                ctx.restore();
             }
         }
 
-        // --- GAME ENGINE ---
-        function init() {
-            spawnTarget();
-            loop();
-            checkConnection();
+        class Particle {
+            constructor(x, y, color) {
+                this.x = x;
+                this.y = y;
+                this.vx = (Math.random() - 0.5) * 10;
+                this.vy = (Math.random() - 0.5) * 10;
+                this.life = 1.0;
+                this.color = color;
+            }
+            update() {
+                this.x += this.vx;
+                this.y += this.vy;
+                this.life -= 0.04;
+            }
+            draw() {
+                ctx.globalAlpha = this.life;
+                ctx.fillStyle = this.color;
+                ctx.beginPath();
+                ctx.arc(this.x, this.y, 3, 0, Math.PI * 2);
+                ctx.fill();
+                ctx.globalAlpha = 1.0;
+            }
         }
 
+        // --- ENGINE ---
         function spawnTarget() {
             targets.push(new Target());
         }
 
-        function loop() {
-            // Clear Canvas
-            ctx.fillStyle = 'rgba(0, 0, 0, 0.3)'; // Trail effect
+        function createExplosion(x, y) {
+            for(let i=0; i<15; i++) {
+                particles.push(new Particle(x, y, '#00ff00'));
+            }
+        }
+
+        function playSound(freq, type) {
+            if (audioCtx.state === 'suspended') audioCtx.resume();
+            const osc = audioCtx.createOscillator();
+            const gain = audioCtx.createGain();
+            osc.frequency.setValueAtTime(freq, audioCtx.currentTime);
+            osc.type = type;
+            gain.gain.setValueAtTime(0.1, audioCtx.currentTime);
+            gain.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + 0.1);
+            osc.connect(gain);
+            gain.connect(audioCtx.destination);
+            osc.start();
+            osc.stop(audioCtx.currentTime + 0.1);
+        }
+
+        function gameLoop() {
+            // Background / Trail
+            ctx.fillStyle = 'rgba(10, 10, 10, 0.4)'; 
             ctx.fillRect(0, 0, width, height);
 
             // Draw Grid
             ctx.strokeStyle = '#1a1a1a';
             ctx.lineWidth = 1;
-            for(let i=0; i<width; i+=50) { ctx.beginPath(); ctx.moveTo(i,0); ctx.lineTo(i,height); ctx.stroke(); }
-            for(let i=0; i<height; i+=50) { ctx.beginPath(); ctx.moveTo(0,i); ctx.lineTo(width,i); ctx.stroke(); }
+            ctx.beginPath();
+            for(let i=0; i<width; i+=100) { ctx.moveTo(i,0); ctx.lineTo(i,height); }
+            for(let i=0; i<height; i+=100) { ctx.moveTo(0,i); ctx.lineTo(width,i); }
+            ctx.stroke();
 
-            // Draw Targets
-            targets.forEach(t => t.draw());
+            // Update & Draw Targets
+            targets.forEach(t => { t.update(); t.draw(); });
 
-            // CHEAT LOGIC: Auto-aim
+            // Update & Draw Particles
+            particles.forEach((p, index) => {
+                p.update();
+                p.draw();
+                if(p.life <= 0) particles.splice(index, 1);
+            });
+
+            // AIMBOT LOGIC
             if(isCheating && targets.length > 0) {
                 const t = targets[0];
-                // Simulate inhuman reaction: Wait 30ms then snap
-                if(Date.now() - t.spawnTime > 30) { 
-                    // Move "mouse" instantly to target center
-                    mouseX = t.x;
-                    mouseY = t.y;
-                    handleClick({ clientX: t.x + canvas.getBoundingClientRect().left, clientY: t.y + canvas.getBoundingClientRect().top }, true);
+                const now = Date.now();
+                // 30ms inhuman reaction time
+                if(now - t.spawnTime > 30) {
+                    // Snap crosshair visually
+                    updateCrosshair(t.x, t.y);
+                    // Register hit
+                    handleHit(t, t.x, t.y, true);
                 }
             }
 
-            requestAnimationFrame(loop);
+            requestAnimationFrame(gameLoop);
         }
 
-        // --- INTERACTION ---
-        function handleClick(e, isBot = false) {
-            const rect = canvas.getBoundingClientRect();
-            // If bot, we trust the passed coordinates. If human, calculate from event.
-            const clickX = isBot ? mouseX : e.clientX - rect.left;
-            const clickY = isBot ? mouseY : e.clientY - rect.top;
+        // --- INPUT HANDLING ---
+        function updateCrosshair(x, y) {
+            crosshair.style.left = x + 'px';
+            crosshair.style.top = y + 'px';
+        }
 
-            // Check collision backwards (topmost target first)
-            for (let i = targets.length - 1; i >= 0; i--) {
+        window.addEventListener('mousemove', (e) => {
+            if(!isCheating) {
+                mouseX = e.clientX;
+                mouseY = e.clientY;
+                updateCrosshair(mouseX, mouseY);
+            }
+        });
+
+        window.addEventListener('mousedown', (e) => {
+            if(isCheating) return; // Bot handles clicks
+            
+            // Check collisions
+            let hit = false;
+            // Iterate backwards to hit top targets first
+            for(let i = targets.length - 1; i >= 0; i--) {
                 const t = targets[i];
-                const dist = Math.hypot(clickX - t.x, clickY - t.y);
-
-                if (dist < t.radius) {
-                    // HIT!
-                    const now = Date.now();
-                    const reactionTime = now - t.spawnTime;
-                    
-                    // Visual feedback
-                    playSound(600, 'square');
-                    score++;
-                    document.getElementById('score').innerText = `SCORE: ${score}`;
-                    
-                    // Send Data
-                    sendTelemetry(t, clickX, clickY, dist, reactionTime, isBot);
-                    
-                    // Remove target and spawn new one
-                    targets.splice(i, 1);
-                    spawnTarget();
-                    return;
+                const dist = Math.hypot(e.clientX - t.x, e.clientY - t.y);
+                
+                if(dist < t.radius) {
+                    handleHit(t, e.clientX, e.clientY, false);
+                    hit = true;
+                    break; 
                 }
             }
-            // MISS
-            if(!isBot) playSound(150, 'sawtooth');
+
+            if(!hit) {
+                playSound(150, 'sawtooth'); // Miss sound
+                // Visual ripple for miss
+                particles.push(new Particle(e.clientX, e.clientY, '#ff0000'));
+            }
+        });
+
+        function handleHit(target, clickX, clickY, isBot) {
+            // Logic
+            const now = Date.now();
+            const reaction = now - target.spawnTime;
+            const dist = Math.hypot(clickX - target.x, clickY - target.y);
+
+            
+            createExplosion(target.x, target.y);
+            playSound(isBot ? 880 : 440, 'sine'); 
+            
+            
+            const index = targets.indexOf(target);
+            if(index > -1) targets.splice(index, 1);
+
+            
+            score++;
+            document.getElementById('score').innerText = `SCORE: ${score}`;
+            document.getElementById('latency').innerText = `LAST: ${reaction}ms`;
+            document.getElementById('status-msg').innerText = "Data Stream: ACTIVE";
+            document.getElementById('status-msg').style.color = "#0f0";
+
+            
+            setTimeout(spawnTarget, isBot ? 100 : 0); // Slight delay for bot to 
+            sendTelemetry(reaction, dist, clickX, clickY, isBot);
         }
 
-        async function sendTelemetry(target, clickX, clickY, dist, reactionTime, isBot) {
+        async function sendTelemetry(reaction, dist, x, y, isBot) {
             const payload = {
                 user_id: USER_ID,
-                match_id: "lobby_alpha",
+                match_id: "lobby_full_width",
                 click_data: {
                     timestamp: Date.now(),
-                    reaction_time_ms: reactionTime,
-                    mouse_x: Math.round(clickX),
-                    mouse_y: Math.round(clickY),
+                    reaction_time_ms: reaction,
+                    mouse_x: Math.round(x),
+                    mouse_y: Math.round(y),
                     distance_from_center: parseFloat(dist.toFixed(2)),
-                    is_bot_flag: isBot // For debugging, but model won't use this!
+                    bot_flag: isBot
                 }
             };
-
-            log(`Sent: ${reactionTime}ms | Offset: ${dist.toFixed(1)}px`);
 
             try {
                 await fetch(API_URL, {
@@ -253,63 +369,72 @@
                     headers: { "Content-Type": "application/json" },
                     body: JSON.stringify(payload)
                 });
-            } catch (err) {
-                console.error("API Error", err);
-            }
-        }
-
-        // --- CONTROLS ---
-        canvas.addEventListener('mousedown', (e) => handleClick(e, false));
-        
-        // Track mouse for visuals
-        canvas.addEventListener('mousemove', (e) => {
-            if(!isCheating) {
-                const rect = canvas.getBoundingClientRect();
-                mouseX = e.clientX - rect.left;
-                mouseY = e.clientY - rect.top;
-            }
-        });
-
-        // Keyboard Shortcut 'Z' for toggle
-        document.addEventListener('keydown', (e) => {
-            if(e.key.toLowerCase() === 'z') toggleCheats();
-        });
-
-        function toggleCheats() {
-            isCheating = !isCheating;
-            const btn = document.getElementById('btn-cheat');
-            if(isCheating) {
-                btn.classList.add('cheat-active');
-                btn.innerText = "AIMBOT: ON";
-                log("WARNING: CHEAT SOFTWARE DETECTED");
-            } else {
-                btn.classList.remove('cheat-active');
-                btn.innerText = "[Z] ACTIVATE AIMBOT";
-                log("System: User normalized");
-            }
-        }
-
-        // --- UTILS ---
-        function log(msg) {
-            const el = document.getElementById('logs');
-            el.innerHTML = `> ${msg}<br>` + el.innerHTML;
-        }
-
-        async function checkConnection() {
-            try {
-                // Just checking if backend accepts a ping (using a known bad endpoint usually 404s, but connection succeeds)
-                // For now just assume if fetch doesn't throw network error, we are good.
-                document.getElementById('connection-status').innerText = "ONLINE";
-                document.getElementById('connection-status').style.color = "#0f0";
             } catch(e) {
-                document.getElementById('connection-status').innerText = "OFFLINE";
-                document.getElementById('connection-status').style.color = "red";
+                document.getElementById('status-msg').innerText = "System: OFFLINE (Backend Error)";
+                document.getElementById('status-msg').style.color = "red";
             }
         }
 
-        // START
-        init();
+
+        window.addEventListener('keydown', (e) => {
+            if(e.key.toLowerCase() === 'z') toggleCheat();
+        });
+
+        function toggleCheat() {
+            isCheating = !isCheating;
+            const ind = document.getElementById('cheat-indicator');
+            const cross = document.getElementById('crosshair');
+            
+            if(isCheating) {
+                ind.classList.add('active');
+                ind.innerText = "AIMBOT: ACTIVE";
+                cross.style.borderColor = "red";
+                cross.style.transform = "translate(-50%, -50%) scale(1.5)";
+            } else {
+                ind.classList.remove('active');
+                ind.innerText = "[Z] AIMBOT: OFF";
+                cross.style.borderColor = "rgba(255, 255, 255, 0.8)";
+                cross.style.transform = "translate(-50%, -50%) scale(1)";
+                mouseX = width/2;
+                mouseY = height/2;
+                updateCrosshair(mouseX, mouseY);
+            }
+        }
+
+        // Start
+        spawnTarget();
+        gameLoop();
+
+        // Add this at the bottom of your script
+async function checkBanStatus() {
+    try {
+        const response = await fetch(`http://localhost:3001/judge/${USER_ID}`);
+        const result = await response.json();
+
+        if (result.verdict === "BAN") {
+            // STOP THE GAME
+            isCheating = false; 
+            document.body.innerHTML = `
+                <div style="background:red; color:white; height:100vh; display:flex; 
+                     flex-direction:column; align-items:center; justify-content:center;">
+                    <h1>🛑 ACCOUNT PERMANENTLY BANNED</h1>
+                    <p>Sentinel Anti-Cheat detected illegal software patterns.</p>
+                    <p>Confidence: ${result.confidence}</p>
+                    <button onclick="location.reload()" style="background:white; color:red; border:none; padding:10px 20px; font-weight:bold; cursor:pointer;">RETRY CLEAN</button>
+                </div>
+            `;
+            // Play a scary sound
+            playSound(100, 'sawtooth');
+        }
+    } catch (e) {
+        console.log("Judge not reachable yet...");
+    }
+}
+
+// Check every 2 seconds
+setInterval(checkBanStatus, 2000);
 
     </script>
+    
 </body>
 </html>

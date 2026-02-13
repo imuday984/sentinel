@@ -2,12 +2,11 @@ const fastify = require('fastify')({ logger: true });
 const cors = require('@fastify/cors');
 const redis = require('./redis');
 
-// Enable CORS so our HTML game (localhost:8080) can talk to this API (localhost:3000)
 fastify.register(cors, { 
     origin: '*' 
 });
 
-// Endpoint: Receive Telemetry
+
 fastify.post('/telemetry', async (req, reply) => {
     const { user_id, match_id, click_data } = req.body;
 
@@ -15,8 +14,7 @@ fastify.post('/telemetry', async (req, reply) => {
         return reply.code(400).send({ error: "Missing data" });
     }
 
-    // Push to Redis Stream 'game_events'
-    // We store the entire JSON body as a string under the key 'payload'
+    
     try {
         await redis.xadd(
             'game_events',
@@ -32,7 +30,7 @@ fastify.post('/telemetry', async (req, reply) => {
     }
 });
 
-// Run Server
+
 const start = async () => {
     try {
         await fastify.listen({ port: 3000 });
