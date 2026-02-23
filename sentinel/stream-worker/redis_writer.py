@@ -1,10 +1,12 @@
+import os  # Add this line
 import redis
 import json
 
 class RedisClient:
-    def __init__(self, host='localhost', port=6379):
-        # decode_responses=True ensures we get Strings, not Bytes
-        self.client = redis.Redis(host=host, port=port, decode_responses=True)
+    def __init__(self):
+        # Use 'redis' inside Docker, 'localhost' outside
+        host = os.getenv('REDIS_HOST', 'redis') # Default to 'redis' for docker
+        self.client = redis.Redis(host=host, port=6379, decode_responses=True)
 
     def get_client(self):
         return self.client
