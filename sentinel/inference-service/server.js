@@ -4,7 +4,7 @@ const onnx = require('onnxruntime-node');
 
 // 1. Connect to Redis (Feature Store)
 const redis = new Redis({
-    host: 'localhost',
+    host: process.env.REDIS_HOST || 'localhost',
     port: 6379
 });
 
@@ -96,7 +96,7 @@ fastify.get('/judge/:userId', async (req, reply) => {
 const start = async () => {
     await loadModel();
     try {
-        await fastify.listen({ port: 3001 });
+        await fastify.listen({ port: 3001, host: '0.0.0.0' });
         console.log("⚖️ Judge listening on http://localhost:3001");
     } catch (err) {
         fastify.log.error(err);

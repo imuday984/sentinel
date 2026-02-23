@@ -1,5 +1,5 @@
 {
-  "name": "inference-service",
+  "name": "api-gateway",
   "version": "1.0.0",
   "main": "redis.js",
   "scripts": {
@@ -9,10 +9,10 @@
   "keywords": [],
   "author": "",
   "license": "ISC",
+  "description": "",
   "dependencies": {
+    "@fastify/cors": "^11.2.0",
     "fastify": "^5.7.4",
-    "ioredis": "^5.9.3",
-    "onnxruntime-node": "^1.24.2"
-  },
-  "description": ""
+    "ioredis": "^5.9.3"
+  }
 }
