@@ -1,4 +1,14 @@
 services:
+  dashboard:
+    build: ./dashboard
+    container_name: sentinel_dashboard
+    ports:
+      - "8501:8501"
+    environment:
+      - REDIS_HOST=redis
+    depends_on:
+      redis:
+        condition: service_healthy
   redis:
     image: redis:alpine
     container_name: sentinel_redis
